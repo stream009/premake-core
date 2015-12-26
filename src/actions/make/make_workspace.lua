@@ -28,6 +28,7 @@
 		make.projectrules(wks)
 		make.cleanrules(wks)
 		make.helprule(wks)
+		make.regenerationRule(wks)
 	end
 
 
@@ -86,6 +87,7 @@
 		_p(1,'@echo "TARGETS:"')
 		_p(1,'@echo "   all (default)"')
 		_p(1,'@echo "   clean"')
+		_p(1,'@echo "   regenerate"')
 
 		for prj in p.workspace.eachproject(wks) do
 			_p(1,'@echo "   %s"', prj.name)
@@ -183,4 +185,44 @@
 			_p('endif')
 			_p('')
 		end
+	end
+
+--
+-- Write out the rule to regenerate Makefiles when premake5.lua has changed
+--
+	function make.regenerationRule(wks)
+		local rel = function (fname)
+			return p.workspace.getrelative(wks, fname)
+		end
+
+		-- Collect relevant lua scripts
+		-- TODO Scripts loaded by 'require', 'dofile'
+		local includedFiles = table.filter(
+			table.keys(io._includedFiles),
+			function (fname)
+				return fname:sub(1, 1) ~= "$" -- exclude embeded files
+			end
+		)
+		includedFiles = table.translate(includedFiles, rel)
+
+		local prerequisites =
+			table.concat(table.join(rel(_MAIN_SCRIPT), includedFiles), " ")
+
+		-- Build command line
+		local cmdline =
+			string.format("%s %s", _PREMAKE_COMMAND, table.concat(_ARGV, " "))
+		local recipe = string.format("@%s %s; %s",
+			os.translateCommands("cd"), rel(_MAIN_SCRIPT_DIR), cmdline)
+
+		-- Write out to Makefile
+		_p("")
+		_p(0, ".PHONY: regenerate")
+		_p(0, "regenerate:")
+		_p(1, recipe)
+
+		_p("")
+		_p(0, string.format("Makefile: %s", prerequisites))
+		_p(1, recipe)
+		-- Need this in case of resulting Makefile hasn't change
+		_x(1, "@%s Makefile", os.translateCommands("touch"))
 	end
